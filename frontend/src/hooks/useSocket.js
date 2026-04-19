@@ -7,7 +7,8 @@ const useSocket = (paperId, onAnnotationAdded) => {
   useEffect(() => {
     if (!paperId) return;
 
-    socketRef.current = io('http://localhost:5001');
+    const API_URL = import.meta.env.PROD ? 'https://research-annotation-platform.onrender.com' : 'http://localhost:5001';
+    socketRef.current = io(API_URL);
 
     socketRef.current.emit('join_paper', paperId);
 

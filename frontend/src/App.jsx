@@ -112,7 +112,7 @@ const App = () => {
         </header>
         <div className="flex-1 overflow-hidden">
           <PdfViewer 
-            fileUrl={`http://localhost:5001${selectedPaper.fileUrl}`} 
+            fileUrl={`${import.meta.env.PROD ? 'https://research-annotation-platform.onrender.com' : 'http://localhost:5001'}${selectedPaper.fileUrl}`} 
             annotations={annotations}
             paperId={selectedPaper._id}
           />

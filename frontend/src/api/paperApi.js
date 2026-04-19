@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const API_URL = import.meta.env.PROD ? 'https://research-annotation-platform.onrender.com' : 'http://localhost:5001';
+
 const api = axios.create({
-  baseURL: 'http://localhost:5001/api',
+  baseURL: `${API_URL}/api`,
 });
 
 api.interceptors.request.use((config) => {

@@ -8,7 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
 
   const login = async (email, password) => {
-    const { data } = await axios.post('http://localhost:5001/api/auth/login', { email, password });
+    const API_URL = import.meta.env.PROD ? 'https://research-annotation-platform.onrender.com' : 'http://localhost:5001';
+    const { data } = await axios.post(`${API_URL}/api/auth/login`, { email, password });
     setUser(data.user);
     setToken(data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
@@ -16,7 +17,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signup = async (username, email, password) => {
-    const { data } = await axios.post('http://localhost:5001/api/auth/signup', { username, email, password });
+    const API_URL = import.meta.env.PROD ? 'https://research-annotation-platform.onrender.com' : 'http://localhost:5001';
+    const { data } = await axios.post(`${API_URL}/api/auth/signup`, { username, email, password });
     setUser(data.user);
     setToken(data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
