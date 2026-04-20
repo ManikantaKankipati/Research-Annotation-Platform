@@ -14,6 +14,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const getPapers = () => api.get('/papers');
 export const uploadPaper = (formData) => api.post('/papers/upload', formData, {
   headers: { 'Content-Type': 'multipart/form-data' }
