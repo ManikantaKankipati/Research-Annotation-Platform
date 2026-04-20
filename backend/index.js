@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Readable } from 'stream';
 
 import jwt from 'jsonwebtoken';
 
@@ -57,21 +58,19 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // DB Connection
+let gridfsBucket;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/academic-annotator';
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('Connected to MongoDB'))
+  .then(() => {
+    console.log('Connected to MongoDB');
+    gridfsBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: 'uploads'
+    });
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Multer Storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/')
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
-  }
-});
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // API Routes
@@ -91,17 +90,53 @@ app.get('/api/collections', protect, async (req, res) => {
 
 app.post('/api/papers/upload', protect, upload.single('paper'), async (req, res) => {
   try {
-    const paper = new Paper({
-      title: req.body.title || req.file.originalname,
-      author: req.body.author,
-      fileUrl: `/uploads/${req.file.filename}`,
-      fileName: req.file.originalname,
-      uploader: req.user._id
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const readableStream = new Readable();
+    readableStream.push(req.file.buffer);
+    readableStream.push(null);
+
+    const uploadStream = gridfsBucket.openUploadStream(req.file.originalname, {
+      contentType: req.file.mimetype
     });
-    await paper.save();
-    res.status(201).json(paper);
+
+    readableStream.pipe(uploadStream);
+
+    uploadStream.on('error', (err) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    uploadStream.on('finish', async () => {
+      const paper = new Paper({
+        title: req.body.title || req.file.originalname,
+        author: req.body.author,
+        fileUrl: `/api/papers/file/${uploadStream.id}`,
+        fileName: req.file.originalname,
+        uploader: req.user._id
+      });
+      await paper.save();
+      res.status(201).json(paper);
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/papers/file/:id', async (req, res) => {
+  try {
+    const fileId = new mongoose.Types.ObjectId(req.params.id);
+    const downloadStream = gridfsBucket.openDownloadStream(fileId);
+    
+    downloadStream.on('error', (err) => {
+      res.status(404).json({ error: 'File not found' });
+    });
+    
+    res.set('Content-Type', 'application/pdf');
+    downloadStream.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: 'Invalid file ID' });
   }
 });
 
@@ -196,10 +231,15 @@ app.delete('/api/papers/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to delete this paper' });
     }
 
-    // Delete file
-    const filePath = path.join(__dirname, paper.fileUrl);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Delete file from GridFS
+    try {
+      const fileIdStr = paper.fileUrl.split('/').pop();
+      if (fileIdStr && mongoose.Types.ObjectId.isValid(fileIdStr)) {
+        const fileId = new mongoose.Types.ObjectId(fileIdStr);
+        await gridfsBucket.delete(fileId);
+      }
+    } catch (err) {
+      console.error('Error deleting file from GridFS:', err);
     }
 
     // Delete related annotations
